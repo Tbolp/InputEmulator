@@ -1,5 +1,10 @@
 package com.example.inputemulator
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,17 +35,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.createGraph
 import com.example.inputemulator.ui.theme.InputEmulatorTheme
-import java.time.temporal.ValueRange
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +99,7 @@ fun HomePage(navController: NavController) {
     }
 }
 
+@SuppressLint("MissingPermission")
 @Composable
 fun TouchSettingPage() {
     var sensitive by remember {
@@ -95,6 +108,13 @@ fun TouchSettingPage() {
     var landscape by remember {
         mutableStateOf(false)
     }
+    var resultMessage by remember {
+        mutableStateOf("")
+    }
+    var touchInput = TouchInput()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     Column {
         FormSlider(
             name = "sensitiv",
@@ -103,7 +123,25 @@ fun TouchSettingPage() {
             valueRange = 0f..10f
         )
         FormSwitch(name = "landscape", value = landscape, onValueChange = { landscape = it })
-        Button(onClick = {}) { Text("start") }
+        Button(onClick = {
+            coroutineScope.launch {
+                touchInput.start(context, listener = object : TouchInput.Listener {
+                    override fun onError(code: TouchInput.ErrorCode, message: String) {
+                        resultMessage = "Code: $code\nMessage: $message"
+                        ActivityCompat.requestPermissions(
+                            context.findAndroidActivity()!!,
+                            arrayOf(
+                                Manifest.permission.BLUETOOTH,
+                                Manifest.permission.BLUETOOTH_ADMIN,
+                                Manifest.permission.BLUETOOTH_CONNECT,
+                                Manifest.permission.BLUETOOTH_ADVERTISE
+                            ), 0
+                        )
+                    }
+                })
+            }
+        }) { Text("start") }
+        Text(resultMessage)
     }
 }
 
@@ -138,3 +176,11 @@ fun FormSwitch(
     }
 }
 
+fun Context.findAndroidActivity(): Activity? {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
+}
