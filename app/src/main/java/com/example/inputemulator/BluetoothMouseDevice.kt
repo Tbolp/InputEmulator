@@ -12,26 +12,34 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.annotation.RequiresPermission
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
-class TouchInput {
+class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Listener {}) {
+
+    init {
+        start()
+    }
+
     enum class ErrorCode {
         PERMISSION_DENIED,
     }
 
-    interface Listener {
-        fun onError(code: ErrorCode, message: String) {}
-        fun onSuccess() {}
-        fun onConnect() {}
+    enum class TipCode {
+
     }
 
-    private var _listener: Listener = object : Listener {}
+    interface Listener {
+        fun onError(code: ErrorCode, message: String) {}
+        fun onTips(tips: TipCode) {}
+    }
+
     private var _hidDevice: BluetoothHidDevice? = null
     private var _hostDevice: BluetoothDevice? = null
 
@@ -69,42 +77,6 @@ class TouchInput {
         "Touch", "Touch", "Phone", BluetoothHidDevice.SUBCLASS1_MOUSE, _hidReportDesp
     )
 
-
-    @RequiresPermission(allOf = [Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE])
-    fun start(context: Context, listener: Listener = object : Listener {}) {
-        _listener = listener
-        if (!checkPermission(context)) {
-            onError(ErrorCode.PERMISSION_DENIED);
-            return
-        }
-        val intent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
-        intent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
-        context.startActivity(intent)
-        val bluetoothManager =
-            context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val bluetoothAdapter = bluetoothManager.adapter
-        bluetoothAdapter.getProfileProxy(
-            context,
-            object : BluetoothProfile.ServiceListener {
-                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
-                    if (profile == BluetoothProfile.HID_DEVICE) {
-                        _hidDevice = proxy as BluetoothHidDevice
-                        registerApp(context)
-                    }
-                }
-
-                @SuppressLint("MissingPermission")
-                override fun onServiceDisconnected(profile: Int) {
-                    if (profile == BluetoothProfile.HID_DEVICE) {
-                        unregisterApp()
-                        _hidDevice = null
-                    }
-                }
-            },
-            BluetoothProfile.HID_DEVICE
-        )
-
-    }
 
     private fun checkPermission(context: Context): Boolean {
         if (ActivityCompat.checkSelfPermission(
@@ -173,5 +145,50 @@ class TouchInput {
 
     private fun onError(code: ErrorCode, message: String = "") {
         _listener.onError(code, message)
+    }
+
+    private fun start() {
+        
+        if (!checkPermission(context)) {
+            onError(ErrorCode.PERMISSION_DENIED)
+        }
+        val intent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+        intent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+        context.startActivity(intent)
+        val bluetoothManager =
+            context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetoothAdapter = bluetoothManager.adapter
+        bluetoothAdapter.getProfileProxy(
+            context,
+            object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
+                    if (profile == BluetoothProfile.HID_DEVICE) {
+                        _hidDevice = proxy as BluetoothHidDevice
+                        registerApp(context)
+                    }
+                }
+
+                @SuppressLint("MissingPermission")
+                override fun onServiceDisconnected(profile: Int) {
+                    if (profile == BluetoothProfile.HID_DEVICE) {
+                        unregisterApp()
+                        _hidDevice = null
+                    }
+                }
+            },
+            BluetoothProfile.HID_DEVICE
+        )
+    }
+}
+
+@Composable
+fun Touch(onError: (BluetoothMouseDevice.ErrorCode, String) -> Unit) {
+    val context = LocalContext.current
+    val device by remember {
+        mutableStateOf(BluetoothMouseDevice(context))
+    }
+
+    Button(onClick = {}) {
+        Text("test")
     }
 }
