@@ -1,6 +1,5 @@
 package com.example.inputemulator
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -11,17 +10,22 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.annotation.RequiresPermission
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
+import android.widget.Toast
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
 
-class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Listener {}) {
+class BluetoothMouseDevice(val context: Context, val _listener: Listener = object : Listener {}) {
 
     init {
         start()
@@ -32,12 +36,12 @@ class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Lis
     }
 
     enum class TipCode {
-
+        DEBUG,
     }
 
     interface Listener {
         fun onError(code: ErrorCode, message: String) {}
-        fun onTips(tips: TipCode) {}
+        fun onTips(tips: TipCode, message: String) {}
     }
 
     private var _hidDevice: BluetoothHidDevice? = null
@@ -130,7 +134,20 @@ class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Lis
                 ) {
                     if (state == BluetoothProfile.STATE_CONNECTED) {
                         if (device != null) {
+                            _listener.onTips(
+                                TipCode.DEBUG,
+                                "onConnectionStateChanged.STATE_CONNECTED"
+                            )
                             _hostDevice = device
+                        }
+                    }
+                    if (state == BluetoothProfile.STATE_DISCONNECTED) {
+                        if (device == _hostDevice) {
+                            _listener.onTips(
+                                TipCode.DEBUG,
+                                "onConnectionStateChanged.STATE_DISCONNECTED"
+                            )
+                            _hostDevice = null
                         }
                     }
                 }
@@ -148,7 +165,6 @@ class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Lis
     }
 
     private fun start() {
-        
         if (!checkPermission(context)) {
             onError(ErrorCode.PERMISSION_DENIED)
         }
@@ -163,6 +179,7 @@ class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Lis
             object : BluetoothProfile.ServiceListener {
                 override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
                     if (profile == BluetoothProfile.HID_DEVICE) {
+                        _listener.onTips(TipCode.DEBUG, "onServiceConnected")
                         _hidDevice = proxy as BluetoothHidDevice
                         registerApp(context)
                     }
@@ -171,6 +188,7 @@ class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Lis
                 @SuppressLint("MissingPermission")
                 override fun onServiceDisconnected(profile: Int) {
                     if (profile == BluetoothProfile.HID_DEVICE) {
+                        _listener.onTips(TipCode.DEBUG, "onServiceDisconnected")
                         unregisterApp()
                         _hidDevice = null
                     }
@@ -179,16 +197,86 @@ class BluetoothMouseDevice(_context: Context, _listener: Listener = object : Lis
             BluetoothProfile.HID_DEVICE
         )
     }
+
+    @SuppressLint("MissingPermission")
+    fun leftClick(): Boolean {
+        if (_hostDevice == null && _hidDevice == null) {
+            return false
+        }
+        val leftClickPress = byteArrayOf(0x01.toByte(), 0, 0, 0)
+        _hidDevice?.sendReport(_hostDevice, 1, leftClickPress)
+        val leftClickRelease = byteArrayOf(0, 0, 0, 0)
+        _hidDevice?.sendReport(_hostDevice, 1, leftClickRelease)
+        return true
+    }
+
+    @SuppressLint("MissingPermission")
+    fun leftDown(): Boolean {
+        if (_hostDevice == null && _hidDevice == null) {
+            return false
+        }
+        val report = byteArrayOf(0x01.toByte(), 0, 0, 0)
+        _hidDevice?.sendReport(_hostDevice, 1, report)
+        return true
+    }
+
+    @SuppressLint("MissingPermission")
+    fun leftUp(): Boolean {
+        if (_hostDevice == null && _hidDevice == null) {
+            return false
+        }
+        val report = byteArrayOf(0, 0, 0, 0)
+        _hidDevice?.sendReport(_hostDevice, 1, report)
+        return true
+    }
+
+    @SuppressLint("MissingPermission")
+    fun move(offsetX: Byte, offsetY: Byte): Boolean {
+        if (_hostDevice == null && _hidDevice == null) {
+            return false
+        }
+        val report = byteArrayOf(0, 0, offsetX, offsetY)
+        _hidDevice?.sendReport(_hostDevice, 1, report)
+        return true
+    }
 }
 
 @Composable
 fun Touch(onError: (BluetoothMouseDevice.ErrorCode, String) -> Unit) {
     val context = LocalContext.current
     val device by remember {
-        mutableStateOf(BluetoothMouseDevice(context))
+        mutableStateOf(BluetoothMouseDevice(context, object : BluetoothMouseDevice.Listener {
+            override fun onTips(tips: BluetoothMouseDevice.TipCode, message: String) {
+                Toast.makeText(context, "$tips: $message", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onError(code: BluetoothMouseDevice.ErrorCode, message: String) {
+                Toast.makeText(context, "$code", Toast.LENGTH_SHORT).show()
+            }
+        }))
     }
 
-    Button(onClick = {}) {
-        Text("test")
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = {
+                        device.leftClick()
+                    },
+                    onLongPress = {
+//                        device.leftDown()
+                    },
+                    onDoubleTap = {
+                        device.leftClick()
+                        device.leftClick()
+                    })
+            }
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    device.move(dragAmount.x.toInt().toByte(), dragAmount.y.toInt().toByte())
+                }
+            }) {
+        drawRect(color = Color.Blue, size = size)
     }
 }
