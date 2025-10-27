@@ -235,7 +235,7 @@ class BluetoothMouseDevice(val context: Context, val _listener: Listener = objec
         if (_hostDevice == null && _hidDevice == null) {
             return false
         }
-        val report = byteArrayOf(0, 0, offsetX, offsetY)
+        val report = byteArrayOf(0, offsetX, offsetY, 0)
         _hidDevice?.sendReport(_hostDevice, 1, report)
         return true
     }
@@ -244,6 +244,7 @@ class BluetoothMouseDevice(val context: Context, val _listener: Listener = objec
 @Composable
 fun Touch(onError: (BluetoothMouseDevice.ErrorCode, String) -> Unit) {
     val context = LocalContext.current
+    val mouseDpi = 200f;
     val device by remember {
         mutableStateOf(BluetoothMouseDevice(context, object : BluetoothMouseDevice.Listener {
             override fun onTips(tips: BluetoothMouseDevice.TipCode, message: String) {
@@ -274,7 +275,13 @@ fun Touch(onError: (BluetoothMouseDevice.ErrorCode, String) -> Unit) {
             }
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
-                    device.move(dragAmount.x.toInt().toByte(), dragAmount.y.toInt().toByte())
+                    val x = dragAmount.x / context.resources.displayMetrics.xdpi * mouseDpi
+                    val y = dragAmount.y / context.resources.displayMetrics.ydpi * mouseDpi
+                    print("$x $y\n")
+                    device.move(
+                        x.toInt().toByte(),
+                        y.toInt().toByte()
+                    )
                 }
             }) {
         drawRect(color = Color.Blue, size = size)
